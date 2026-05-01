@@ -1,20 +1,15 @@
 import logging
 import json
+import os
 from flask import current_app
 from langchain_core.tools import tool, StructuredTool
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain.agents import create_agent
+from langgraph.checkpoint.memory import MemorySaver
 from app.utils.db_utils import search_cars_in_db, get_car_details_db, get_car_images_db
 
-# In-memory dictionary to store chat histories keyed by wa_id
-chat_sessions = {}
-
-def get_session_history(session_id: str):
-    if session_id not in chat_sessions:
-        chat_sessions[session_id] = ChatMessageHistory()
-    return chat_sessions[session_id]
+# LangGraph in-memory checkpointer to automatically manage chat history per thread_id
+memory = MemorySaver()
 
 @tool
 def search_cars(
@@ -79,8 +74,7 @@ Always be polite, friendly, and concise. Avoid using markdown that WhatsApp does
 
 def handle_gemini_conversation(wa_id, name, user_message, send_message_callback):
     """
-    Handles the conversation using LangChain API.
-    send_message_callback is a function we can call to send messages directly (like images).
+    Handles the conversation using LangChain 1.2+ Agent API.
     """
     api_key = current_app.config.get("GEMINI_API_KEY")
     if not api_key:
@@ -113,38 +107,25 @@ def handle_gemini_conversation(wa_id, name, user_message, send_message_callback)
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
     tools = [search_cars, get_car_details, send_car_images]
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_INSTRUCTION),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
+    # LangChain 1.2 uses create_agent which returns a LangGraph CompiledStateGraph
+    graph = create_agent(
+        model=llm,
+        tools=tools,
+        system_prompt=SYSTEM_INSTRUCTION,
+        checkpointer=memory
+    )
 
-    # Construct the tool calling agent
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    
-    # Create the agent executor
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-
-    # Get user history
-    history = get_session_history(wa_id)
-    chat_history = history.messages
-
-    logging.info(f"Processing message for {name} ({wa_id}) via LangChain...")
+    logging.info(f"Processing message for {name} ({wa_id}) via LangChain 1.2 Agent...")
 
     try:
-        response = agent_executor.invoke(
-            {
-                "input": user_message,
-                "chat_history": chat_history
-            }
-        )
+        inputs = {"messages": [{"role": "user", "content": user_message}]}
+        # We use the wa_id as the thread_id so the checkpointer remembers the conversation per user
+        config = {"configurable": {"thread_id": wa_id}}
         
-        # Manually update the ChatMessageHistory
-        history.add_user_message(user_message)
-        history.add_ai_message(response["output"])
-
-        return response["output"]
+        result = graph.invoke(inputs, config=config)
+        
+        # The graph returns a dict with a 'messages' key. The last message is the AI's final response.
+        return result["messages"][-1].content
 
     except Exception as e:
         logging.error(f"Error communicating with LangChain: {e}")
