@@ -104,7 +104,7 @@ def handle_gemini_conversation(wa_id, name, user_message, send_message_callback)
         description="Fetch image URLs for a specific car ID and signal that images should be sent."
     )
 
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
     tools = [search_cars, get_car_details, send_car_images]
 
     # LangChain 1.2 uses create_agent which returns a LangGraph CompiledStateGraph
