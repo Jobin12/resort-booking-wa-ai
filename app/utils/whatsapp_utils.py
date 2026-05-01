@@ -49,7 +49,8 @@ def send_message(data):
         logging.error("Timeout occurred while sending message")
         return jsonify({"status": "error", "message": "Request timed out"}), 408
     except requests.RequestException as e:
-        logging.error(f"Request failed due to: {e}")
+        error_body = e.response.text if e.response else "No response body"
+        logging.error(f"Request failed due to: {e}. Body: {error_body}")
         return jsonify({"status": "error", "message": "Failed to send message"}), 500
     else:
         log_http_response(response)
