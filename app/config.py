@@ -20,6 +20,11 @@ def load_configurations(app):
     app.config["PG_USER"] = os.getenv("PG_USER", "postgres")
     app.config["PG_PASS"] = os.getenv("PG_PASS", "postgres")
     app.config["PG_DBNAME"] = os.getenv("PG_DBNAME", "postgres")
+    
+    app.config["AWS_ACCESS_KEY_ID"] = os.getenv("AWS_ACCESS_KEY_ID")
+    app.config["AWS_SECRET_ACCESS_KEY"] = os.getenv("AWS_SECRET_ACCESS_KEY")
+    app.config["AWS_REGION"] = os.getenv("AWS_REGION", "us-east-1")
+    app.config["AWS_S3_BUCKET_NAME"] = os.getenv("AWS_S3_BUCKET_NAME")
 
 def configure_logging():
     logging.basicConfig(

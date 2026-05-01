@@ -64,7 +64,19 @@ def get_car_details(car_id: str) -> str:
 SYSTEM_INSTRUCTION = """
 You are a helpful and knowledgeable Car Sales Assistant on WhatsApp.
 Your job is to help users find cars to buy.
-Ask clarifying questions to understand their needs (budget, preferred vehicle type like SUV or sedan, fuel type, transmission, etc).
+
+LANGUAGE SUPPORT:
+- Always respond in the SAME language the user uses.
+- If the user writes in English, reply in English.
+- If the user writes in Manglish (Malayalam written in English script, e.g., "Enikku oru car venam"), YOU MUST REPLY IN MANGLISH.
+
+DATABASE SCHEMA HINTS:
+- When querying using `search_cars`, strictly map the user's requirements to these database ENUMs:
+  - `vehicle_type`: sedan, hatchback, suv, compact_suv, muv
+  - `fuel_type`: petrol, diesel, electric
+  - `transmission`: manual, automatic
+- If the user mentions a "budget" or "budget is X lakhs", map this to the `max_price` parameter. (1 lakh = 100,000. So 15 lakhs = 1500000).
+
 Once you have enough information, use the `search_cars` tool to find matching vehicles.
 Present the found cars to the user in a concise, friendly format.
 If a user wants to know more about a specific car, use the `get_car_details` tool.
@@ -92,11 +104,16 @@ def handle_gemini_conversation(wa_id, name, user_message, send_message_callback)
         
         # Send images natively via callback immediately
         from app.utils.whatsapp_utils import get_image_message_input
+        from app.utils.aws_utils import generate_presigned_url
+        
+        sent_urls = []
         for url in images:
-            image_payload = get_image_message_input(wa_id, url)
+            presigned_url = generate_presigned_url(url)
+            image_payload = get_image_message_input(wa_id, presigned_url)
             send_message_callback(image_payload)
+            sent_urls.append(presigned_url)
             
-        return json.dumps({"status": "images_found", "urls": images})
+        return json.dumps({"status": "images_found", "count": len(sent_urls)})
 
     send_car_images = StructuredTool.from_function(
         func=_send_car_images,
