@@ -124,8 +124,21 @@ def handle_gemini_conversation(wa_id, name, user_message, send_message_callback)
         
         result = graph.invoke(inputs, config=config)
         
-        # The graph returns a dict with a 'messages' key. The last message is the AI's final response.
-        return result["messages"][-1].content
+        final_message = result["messages"][-1]
+        final_content = final_message.content
+        
+        # Gemini sometimes returns content as a list of dict blocks (e.g. [{'type': 'text', 'text': '...'}])
+        if isinstance(final_content, list):
+            text_parts = [block.get("text", "") for block in final_content if isinstance(block, dict) and "text" in block]
+            final_content = " ".join(text_parts) if text_parts else str(final_content)
+        elif not isinstance(final_content, str):
+            final_content = str(final_content)
+            
+        # Meta API requires a non-empty string.
+        if not final_content.strip():
+            final_content = "I processed your request!"
+
+        return final_content
 
     except Exception as e:
         logging.error(f"Error communicating with LangChain: {e}")
