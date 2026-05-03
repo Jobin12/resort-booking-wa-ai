@@ -89,10 +89,24 @@ If a user asks to see pictures of a car, use the `send_car_images` tool. The bac
 Avoid using markdown that WhatsApp doesn't support (WhatsApp supports *bold*, _italic_, ~strikethrough~).
 """
 
+import time
+
+# Global variables for rate limit cooldown to prevent spamming the API when quota is hit
+LAST_RATE_LIMIT_TIME = 0
+COOLDOWN_PERIOD = 20  # seconds
+
 def handle_gemini_conversation(wa_id, name, user_message, send_message_callback):
     """
     Handles the conversation using LangChain 1.2+ Agent API.
     """
+    global LAST_RATE_LIMIT_TIME
+    
+    # Check if we are in a cooldown period
+    current_time = time.time()
+    if current_time - LAST_RATE_LIMIT_TIME < COOLDOWN_PERIOD:
+        wait_time = int(COOLDOWN_PERIOD - (current_time - LAST_RATE_LIMIT_TIME))
+        return f"I'm currently taking a short break due to high demand. Please try again in about {wait_time} seconds! 🙏"
+
     api_key = current_app.config.get("GEMINI_API_KEY")
     if not api_key:
         logging.error("GEMINI_API_KEY is not set.")
@@ -126,7 +140,8 @@ def handle_gemini_conversation(wa_id, name, user_message, send_message_callback)
         description="Fetch image URLs for a specific car ID and signal that images should be sent."
     )
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
+    # Set max_retries to a low value to fail fast if quota is hit
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, max_retries=1)
     tools = [search_cars, get_car_details, send_car_images]
 
     # LangChain 1.2 uses create_agent which returns a LangGraph CompiledStateGraph
@@ -163,5 +178,11 @@ def handle_gemini_conversation(wa_id, name, user_message, send_message_callback)
         return final_content
 
     except Exception as e:
+        error_str = str(e).lower()
+        # Detect rate limiting / quota errors
+        if "429" in error_str or "resource_exhausted" in error_str or "quota" in error_str:
+            LAST_RATE_LIMIT_TIME = time.time()
+            return "We've hit the AI's speed limit! 🏎️💨 I'm going to wait for 60 seconds before accepting more requests. Please try again in a minute."
+        
         logging.error(f"Error communicating with LangChain: {e}")
         return "I'm having some trouble processing your request right now. Please try again later."
