@@ -3,7 +3,7 @@ from flask import current_app, jsonify
 import json
 import requests
 import re
-from app.services.gemini_service import handle_gemini_conversation
+from app.services.openai_service import handle_openai_conversation
 
 def log_http_response(response):
     logging.info(f"Status: {response.status_code}")
@@ -65,11 +65,7 @@ def process_whatsapp_message(body):
 
     logging.info(f"Received message from {name} ({wa_id}): {message_body}")
 
-    # Pass to Gemini service which will handle function calls and generate the final text/images
-    # Note: gemini_service could call send_message directly for images, or return a structured response.
-    # For flexibility, we let gemini_service call `send_message` with image payloads directly,
-    # and return the final text response.
-    final_response = handle_gemini_conversation(wa_id, name, message_body, send_message_callback=send_message)
+    final_response = handle_openai_conversation(wa_id, name, message_body, send_message_callback=send_message)
 
     if final_response:
         data = get_text_message_input(wa_id, final_response)

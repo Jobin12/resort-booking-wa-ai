@@ -13,7 +13,7 @@ def load_configurations(app):
     app.config["PHONE_NUMBER_ID"] = os.getenv("PHONE_NUMBER_ID")
     app.config["VERIFY_TOKEN"] = os.getenv("VERIFY_TOKEN")
     
-    app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+    app.config["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
     
     app.config["PG_HOST"] = os.getenv("PG_HOST", "localhost")
     app.config["PG_PORT"] = os.getenv("PG_PORT", "5432")

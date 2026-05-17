@@ -17,110 +17,113 @@ def get_db_connection():
         logging.error(f"Error connecting to database: {e}")
         return None
 
-def search_cars_in_db(filters):
+
+def _serialize_item(row):
+    """Normalize a jewellery_items row for JSON serialization."""
+    if not row:
+        return row
+    row['id'] = str(row['id'])
+    for numeric_field in ('price', 'making_charge', 'weight_grams'):
+        if row.get(numeric_field) is not None:
+            row[numeric_field] = float(row[numeric_field])
+    for date_field in ('created_at', 'updated_at'):
+        if row.get(date_field) is not None:
+            row[date_field] = row[date_field].isoformat()
+    return row
+
+
+def search_jewellery_in_db(filters):
     """
-    Search cars based on provided filters.
+    Search jewellery items based on provided filters.
     Filters is a dictionary that might contain:
-    manufacturer, model_name, vehicle_type, fuel_type, transmission, 
-    max_price, min_year, max_kms
+    category, metal_type, karat_purity, stone_type, gender,
+    max_price, max_weight_grams
     """
     conn = get_db_connection()
     if not conn:
         return []
 
-    query = "SELECT id, manufacturer, model_name, vehicle_type, fuel_type, transmission, year_of_manufacture, total_kms, price, color, description FROM cars WHERE 1=1"
+    query = (
+        "SELECT id, category, metal_type, karat_purity, stone_type, "
+        "weight_grams, gender, price, making_charge "
+        "FROM public.jewellery_items WHERE 1=1"
+    )
     params = []
 
-    if filters.get("manufacturer"):
-        query += " AND manufacturer ILIKE %s"
-        params.append(f"%{filters['manufacturer']}%")
-    
-    if filters.get("model_name"):
-        query += " AND model_name ILIKE %s"
-        params.append(f"%{filters['model_name']}%")
+    if filters.get("category"):
+        query += " AND category = %s"
+        params.append(filters["category"].lower())
 
-    if filters.get("vehicle_type"):
-        query += " AND vehicle_type = %s"
-        params.append(filters["vehicle_type"].lower())
-        
-    if filters.get("fuel_type"):
-        query += " AND fuel_type = %s"
-        params.append(filters["fuel_type"].lower())
+    if filters.get("metal_type"):
+        query += " AND metal_type = %s"
+        params.append(filters["metal_type"].lower())
 
-    if filters.get("transmission"):
-        query += " AND transmission = %s"
-        params.append(filters["transmission"].lower())
+    if filters.get("karat_purity"):
+        query += " AND karat_purity = %s"
+        params.append(filters["karat_purity"])
+
+    if filters.get("stone_type"):
+        query += " AND stone_type ILIKE %s"
+        params.append(f"%{filters['stone_type']}%")
+
+    if filters.get("gender"):
+        query += " AND gender = %s"
+        params.append(filters["gender"].lower())
 
     if filters.get("max_price"):
         query += " AND price <= %s"
         params.append(filters["max_price"])
 
-    if filters.get("min_year"):
-        query += " AND year_of_manufacture >= %s"
-        params.append(filters["min_year"])
+    if filters.get("max_weight_grams"):
+        query += " AND weight_grams <= %s"
+        params.append(filters["max_weight_grams"])
 
-    if filters.get("max_kms"):
-        query += " AND total_kms <= %s"
-        params.append(filters["max_kms"])
-        
-    query += " LIMIT 5" # limit to 5 to avoid overwhelming the LLM
+    query += " ORDER BY price ASC NULLS LAST LIMIT 5"
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
             results = cur.fetchall()
-            # Convert UUID to string for JSON serialization
-            for row in results:
-                row['id'] = str(row['id'])
-                # convert decimal to float
-                row['price'] = float(row['price'])
-            return results
+            return [_serialize_item(r) for r in results]
     except Exception as e:
         logging.error(f"Error executing search query: {e}")
         return []
     finally:
         conn.close()
 
-def get_car_details_db(car_id):
+
+def get_jewellery_details_db(item_id):
     conn = get_db_connection()
     if not conn:
         return None
 
-    query = "SELECT * FROM cars WHERE id = %s"
+    query = "SELECT * FROM public.jewellery_items WHERE id = %s"
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, (car_id,))
-            result = cur.fetchone()
-            if result:
-                result['id'] = str(result['id'])
-                result['price'] = float(result['price'])
-                # format dates
-                if result.get('created_at'):
-                    result['created_at'] = result['created_at'].isoformat()
-                if result.get('updated_at'):
-                    result['updated_at'] = result['updated_at'].isoformat()
-            return result
+            cur.execute(query, (item_id,))
+            return _serialize_item(cur.fetchone())
     except Exception as e:
-        logging.error(f"Error getting car details: {e}")
+        logging.error(f"Error getting jewellery details: {e}")
         return None
     finally:
         conn.close()
 
-def get_car_images_db(car_id):
+
+def get_jewellery_images_db(item_id):
     conn = get_db_connection()
     if not conn:
         return []
 
-    query = "SELECT image_urls FROM cars WHERE id = %s"
+    query = "SELECT image_urls FROM public.jewellery_items WHERE id = %s"
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, (car_id,))
+            cur.execute(query, (item_id,))
             result = cur.fetchone()
             if result and result.get('image_urls'):
                 return result['image_urls']
             return []
     except Exception as e:
-        logging.error(f"Error getting car images: {e}")
+        logging.error(f"Error getting jewellery images: {e}")
         return []
     finally:
         conn.close()

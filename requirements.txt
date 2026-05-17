@@ -3,6 +3,6 @@ python-dotenv
 requests
 psycopg2-binary
 langchain==1.2.16
-langchain-google-genai
+langchain-openai
 langchain-community
 boto3
