@@ -86,6 +86,7 @@ DATABASE SCHEMA HINTS:
 - `karat_purity` is an integer between 1 and 24 (typical values: 18, 22, 24).
 - `stone_type` is free-text (e.g. diamond, ruby, emerald, sapphire, pearl).
 - If the user mentions a "budget" or "budget is X lakhs", map this to the `max_price` parameter. (1 lakh = 100,000. So 2 lakhs = 200000).
+- IMPORTANT: Only pass filters the user has EXPLICITLY mentioned. Never invent a `max_price`, `karat_purity`, or any other filter the user did not state. If the user asks for "cheapest gold rings", only set `category=ring` and `metal_type=gold` — do NOT add a `max_price`.
 - Prices are in Indian Rupees (INR). Format prices with the ₹ symbol when presenting them.
 
 Once you have enough information, use the `search_jewellery` tool to find matching items.

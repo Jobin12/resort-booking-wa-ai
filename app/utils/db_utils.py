@@ -39,6 +39,7 @@ def search_jewellery_in_db(filters):
     category, metal_type, karat_purity, stone_type, gender,
     max_price, max_weight_grams
     """
+    logging.info(f"search_jewellery_in_db called with filters: {filters}")
     conn = get_db_connection()
     if not conn:
         return []
