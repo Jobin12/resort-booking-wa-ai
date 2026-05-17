@@ -1,9 +1,29 @@
 import logging
+from collections import OrderedDict
+from threading import Lock
 from flask import current_app, jsonify
 import json
 import requests
 import re
 from app.services.openai_service import handle_openai_conversation
+
+# Dedup recently-seen WhatsApp message IDs. Meta retries the webhook if it
+# doesn't receive a 200 in time, which would otherwise trigger duplicate replies.
+_SEEN_MESSAGE_IDS = OrderedDict()
+_SEEN_MESSAGE_IDS_MAX = 1000
+_SEEN_MESSAGE_IDS_LOCK = Lock()
+
+
+def _is_duplicate_message(message_id):
+    if not message_id:
+        return False
+    with _SEEN_MESSAGE_IDS_LOCK:
+        if message_id in _SEEN_MESSAGE_IDS:
+            return True
+        _SEEN_MESSAGE_IDS[message_id] = None
+        while len(_SEEN_MESSAGE_IDS) > _SEEN_MESSAGE_IDS_MAX:
+            _SEEN_MESSAGE_IDS.popitem(last=False)
+        return False
 
 def log_http_response(response):
     logging.info(f"Status: {response.status_code}")
@@ -61,7 +81,12 @@ def process_whatsapp_message(body):
     name = body["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"]
 
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+    message_id = message.get("id")
     message_body = message["text"]["body"]
+
+    if _is_duplicate_message(message_id):
+        logging.info(f"Skipping duplicate webhook delivery for message {message_id}")
+        return
 
     logging.info(f"Received message from {name} ({wa_id}): {message_body}")
 
