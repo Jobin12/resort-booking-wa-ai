@@ -4,5 +4,6 @@ requests
 psycopg2-binary
 langchain==1.2.16
 langchain-openai
+langchain-google-genai
 langchain-community
 boto3

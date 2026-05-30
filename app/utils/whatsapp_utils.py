@@ -5,7 +5,7 @@ from flask import current_app, jsonify
 import json
 import requests
 import re
-from app.services.openai_service import handle_openai_conversation
+from app.services.agent_service import handle_resort_conversation
 
 # Dedup recently-seen WhatsApp message IDs. Meta retries the webhook if it
 # doesn't receive a 200 in time, which would otherwise trigger duplicate replies.
@@ -90,7 +90,7 @@ def process_whatsapp_message(body):
 
     logging.info(f"Received message from {name} ({wa_id}): {message_body}")
 
-    final_response = handle_openai_conversation(wa_id, name, message_body, send_message_callback=send_message)
+    final_response = handle_resort_conversation(wa_id, name, message_body, send_message_callback=send_message)
 
     if final_response:
         data = get_text_message_input(wa_id, final_response)

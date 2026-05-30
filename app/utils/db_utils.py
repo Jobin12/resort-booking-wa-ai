@@ -3,6 +3,9 @@ from psycopg2.extras import RealDictCursor
 from flask import current_app
 import logging
 
+from app.utils.resort_info import ACTIVE_STATUSES
+
+
 def get_db_connection():
     try:
         conn = psycopg2.connect(
@@ -18,113 +21,235 @@ def get_db_connection():
         return None
 
 
-def _serialize_item(row):
-    """Normalize a jewellery_items row for JSON serialization."""
+def _serialize_booking(row):
+    """Normalize a bookings row for JSON serialization."""
     if not row:
         return row
-    row['id'] = str(row['id'])
-    for numeric_field in ('price', 'making_charge', 'weight_grams'):
-        if row.get(numeric_field) is not None:
-            row[numeric_field] = float(row[numeric_field])
-    for date_field in ('created_at', 'updated_at'):
+    if row.get('booking_id') is not None:
+        row['booking_id'] = str(row['booking_id'])
+    if row.get('total_amount') is not None:
+        row['total_amount'] = float(row['total_amount'])
+    for date_field in ('check_in_date', 'check_out_date', 'created_at', 'updated_at'):
         if row.get(date_field) is not None:
             row[date_field] = row[date_field].isoformat()
     return row
 
 
-def search_jewellery_in_db(filters):
-    """
-    Search jewellery items based on provided filters.
-    Filters is a dictionary that might contain:
-    category, metal_type, karat_purity, stone_type, gender,
-    max_price, max_weight_grams
-    """
-    logging.info(f"search_jewellery_in_db called with filters: {filters}")
+# ---------------------------------------------------------------------------
+# Media assets (images)
+# ---------------------------------------------------------------------------
+
+def _get_images_db(asset_type, related_item):
     conn = get_db_connection()
     if not conn:
         return []
 
     query = (
-        "SELECT id, category, metal_type, karat_purity, stone_type, "
-        "weight_grams, gender, price, making_charge "
-        "FROM public.jewellery_items WHERE 1=1"
+        "SELECT image_url FROM media_assets "
+        "WHERE asset_type = %s AND related_item = %s "
+        "ORDER BY display_order"
     )
-    params = []
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (asset_type, related_item))
+            rows = cur.fetchall()
+            return [r['image_url'] for r in rows if r.get('image_url')]
+    except Exception as e:
+        logging.error(f"Error fetching {asset_type} images for '{related_item}': {e}")
+        return []
+    finally:
+        conn.close()
 
-    if filters.get("category"):
-        query += " AND category = %s"
-        params.append(filters["category"].lower())
 
-    if filters.get("metal_type"):
-        query += " AND metal_type = %s"
-        params.append(filters["metal_type"].lower())
+def get_hut_images_db(hut_category):
+    """Image URLs for a hut category, ordered by display_order."""
+    return _get_images_db("HUT", hut_category)
 
-    if filters.get("karat_purity"):
-        query += " AND karat_purity = %s"
-        params.append(filters["karat_purity"])
 
-    if filters.get("stone_type"):
-        query += " AND stone_type ILIKE %s"
-        params.append(f"%{filters['stone_type']}%")
+def get_amenity_images_db(amenity):
+    """Image URLs for an amenity, ordered by display_order."""
+    return _get_images_db("AMENITY", amenity)
 
-    if filters.get("gender"):
-        query += " AND gender = %s"
-        params.append(filters["gender"].lower())
 
-    if filters.get("max_price"):
-        query += " AND price <= %s"
-        params.append(filters["max_price"])
+# ---------------------------------------------------------------------------
+# Availability
+# ---------------------------------------------------------------------------
 
-    if filters.get("max_weight_grams"):
-        query += " AND weight_grams <= %s"
-        params.append(filters["max_weight_grams"])
+def get_occupied_hut_numbers_db(hut_category, check_in, check_out, exclude_booking_id=None):
+    """
+    Return the set of specific hut_numbers in a category that are occupied by an
+    active (inventory-consuming) booking overlapping the requested date range.
+    Uses the standard half-open overlap test:
+        existing.check_in_date < requested.check_out
+        AND existing.check_out_date > requested.check_in
+    When re-checking availability for an existing booking being modified, pass its
+    booking_id as exclude_booking_id so it doesn't count against itself.
+    Returns a set of hut_number strings, or None on DB error (so callers fail safe).
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
 
-    query += " ORDER BY price ASC NULLS LAST LIMIT 5"
+    placeholders = ", ".join(["%s"] * len(ACTIVE_STATUSES))
+    query = (
+        "SELECT DISTINCT hut_number FROM bookings "
+        "WHERE hut_category = %s "
+        f"AND booking_status IN ({placeholders}) "
+        "AND check_in_date < %s AND check_out_date > %s"
+    )
+    params = [hut_category, *ACTIVE_STATUSES, check_out, check_in]
+    if exclude_booking_id:
+        query += " AND booking_id <> %s"
+        params.append(exclude_booking_id)
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, params)
+            return {r['hut_number'] for r in cur.fetchall() if r.get('hut_number')}
+    except Exception as e:
+        logging.error(f"Error fetching occupied hut numbers: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Bookings CRUD
+# ---------------------------------------------------------------------------
+
+def create_booking_db(
+    guest_name,
+    guest_phone,
+    hut_category,
+    hut_number,
+    check_in_date,
+    check_out_date,
+    number_of_guests,
+    total_amount,
+    guest_email=None,
+    special_requests=None,
+):
+    """Insert a CONFIRMED booking and return the serialized row (with booking_id)."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+
+    query = (
+        "INSERT INTO bookings "
+        "(guest_name, guest_phone, guest_email, hut_category, hut_number, check_in_date, "
+        " check_out_date, number_of_guests, booking_status, total_amount, special_requests) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'CONFIRMED', %s, %s) "
+        "RETURNING *"
+    )
+    params = (
+        guest_name,
+        guest_phone,
+        guest_email,
+        hut_category,
+        hut_number,
+        check_in_date,
+        check_out_date,
+        number_of_guests,
+        total_amount,
+        special_requests,
+    )
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, params)
+            row = cur.fetchone()
+            conn.commit()
+            return _serialize_booking(row)
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error creating booking: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_bookings_db(guest_phone, booking_id=None):
+    """
+    Retrieve bookings for a guest, scoped by guest_phone so a caller can only ever
+    see their own bookings. Optionally narrow to a single booking_id.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+
+    query = "SELECT * FROM bookings WHERE guest_phone = %s"
+    params = [guest_phone]
+    if booking_id:
+        query += " AND booking_id = %s"
+        params.append(booking_id)
+    query += " ORDER BY created_at DESC"
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
-            results = cur.fetchall()
-            return [_serialize_item(r) for r in results]
+            return [_serialize_booking(r) for r in cur.fetchall()]
     except Exception as e:
-        logging.error(f"Error executing search query: {e}")
+        logging.error(f"Error retrieving bookings: {e}")
         return []
     finally:
         conn.close()
 
 
-def get_jewellery_details_db(item_id):
+def update_booking_db(booking_id, guest_phone, fields):
+    """
+    Update allowed fields on a booking, scoped by booking_id AND guest_phone so a
+    caller can never modify another customer's booking. `fields` is a dict of
+    column -> value. Returns the updated serialized row, or None if not found.
+    """
+    if not fields:
+        return None
+
     conn = get_db_connection()
     if not conn:
         return None
 
-    query = "SELECT * FROM public.jewellery_items WHERE id = %s"
+    set_clause = ", ".join(f"{col} = %s" for col in fields)
+    query = (
+        f"UPDATE bookings SET {set_clause}, updated_at = NOW() "
+        "WHERE booking_id = %s AND guest_phone = %s "
+        "RETURNING *"
+    )
+    params = [*fields.values(), booking_id, guest_phone]
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, (item_id,))
-            return _serialize_item(cur.fetchone())
+            cur.execute(query, params)
+            row = cur.fetchone()
+            conn.commit()
+            return _serialize_booking(row)
     except Exception as e:
-        logging.error(f"Error getting jewellery details: {e}")
+        conn.rollback()
+        logging.error(f"Error updating booking {booking_id}: {e}")
         return None
     finally:
         conn.close()
 
 
-def get_jewellery_images_db(item_id):
+def cancel_booking_db(booking_id, guest_phone):
+    """
+    Mark a booking CANCELLED (never delete), scoped by booking_id AND guest_phone.
+    Returns the updated serialized row, or None if not found / on error.
+    """
     conn = get_db_connection()
     if not conn:
-        return []
+        return None
 
-    query = "SELECT image_urls FROM public.jewellery_items WHERE id = %s"
+    query = (
+        "UPDATE bookings SET booking_status = 'CANCELLED', updated_at = NOW() "
+        "WHERE booking_id = %s AND guest_phone = %s "
+        "RETURNING *"
+    )
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, (item_id,))
-            result = cur.fetchone()
-            if result and result.get('image_urls'):
-                return result['image_urls']
-            return []
+            cur.execute(query, (booking_id, guest_phone))
+            row = cur.fetchone()
+            conn.commit()
+            return _serialize_booking(row)
     except Exception as e:
-        logging.error(f"Error getting jewellery images: {e}")
-        return []
+        conn.rollback()
+        logging.error(f"Error cancelling booking {booking_id}: {e}")
+        return None
     finally:
         conn.close()
