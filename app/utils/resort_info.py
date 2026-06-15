@@ -14,40 +14,57 @@ MAX_DISCOUNT_PER_NIGHT = 1000
 # Booking statuses that consume inventory (an active booking occupies a hut).
 ACTIVE_STATUSES = ("CONFIRMED",)
 
-# Canonical hut catalog. Keys match media_assets.related_item for asset_type='HUT'
-# and the value stored in bookings.hut_category. `hut_numbers` is the physical
-# inventory - each booking is assigned one specific hut number, and inventory size
-# is simply the count of hut numbers.
 HUTS = {
-    "Economy": {
-        "max_guests": 2,
-        "view": "Garden View",
-        "amenities": ["Garden View", "Free WiFi"],
-        "price_per_night": 3000,
-        "hut_numbers": ["E001", "E002", "E003", "E004", "E005"],
-        "min_price_per_night": 3000 - MAX_DISCOUNT_PER_NIGHT,  # 2000
-    },
-    "Deluxe": {
+    "Mist Habitat": {
         "max_guests": 3,
-        "view": "Pool View",
-        "amenities": ["Pool View", "Free WiFi", "Complimentary Breakfast"],
+        "view": "Nature View",
+        "amenities": ["Comfortable Bed", "Cozy Nature Stay"],
         "price_per_night": 5000,
-        "hut_numbers": ["D001", "D002", "D003", "D004"],
-        "min_price_per_night": 5000 - MAX_DISCOUNT_PER_NIGHT,  # 4000
+        "hut_numbers": ["MH01", "MH02", "MH03", "MH04", "MH05"],
+        "min_price_per_night": 5000 - MAX_DISCOUNT_PER_NIGHT,
+        "recommended_for": "Couples, Solo travelers, Small families",
+        "description": "A comfortable premium room option suitable for guests seeking a cozy nature stay."
     },
-    "Luxury": {
+    "Mist Premium Suite": {
         "max_guests": 4,
-        "view": "Pool View",
-        "amenities": [
-            "Private Balcony",
-            "Pool View",
-            "Complimentary Breakfast",
-            "Premium Amenities",
-        ],
-        "price_per_night": 8000,
-        "hut_numbers": ["L001", "L002", "L003"],
-        "min_price_per_night": 8000 - MAX_DISCOUNT_PER_NIGHT,  # 7000
+        "view": "Nature View",
+        "amenities": ["Additional Space", "Premium Comfort"],
+        "price_per_night": 7000,
+        "hut_numbers": ["MPS01", "MPS02", "MPS03", "MPS04"],
+        "min_price_per_night": 7000 - MAX_DISCOUNT_PER_NIGHT,
+        "recommended_for": "Couples, Honeymooners, Small families",
+        "description": "A larger suite offering additional space and comfort compared to standard rooms."
     },
+    "Mist Haven Cottage": {
+        "max_guests": 3,
+        "view": "Secluded View",
+        "amenities": ["Private Cottage", "Secluded Experience"],
+        "price_per_night": 8000,
+        "hut_numbers": ["MHC01", "MHC02", "MHC03"],
+        "min_price_per_night": 8000 - MAX_DISCOUNT_PER_NIGHT,
+        "recommended_for": "Couples, Honeymooners, Guests seeking privacy",
+        "description": "A private cottage-style accommodation ideal for guests looking for a more secluded experience."
+    },
+    "Mist Villa": {
+        "max_guests": 6,
+        "view": "Nature View",
+        "amenities": ["Two Bedrooms", "Attached Bathrooms", "Living Space", "Balcony"],
+        "price_per_night": 15000,
+        "hut_numbers": ["MV01", "MV02"],
+        "min_price_per_night": 15000 - MAX_DISCOUNT_PER_NIGHT,
+        "recommended_for": "Families, Two families traveling together, Groups of friends",
+        "description": "A spacious villa with two bedrooms, attached bathrooms, living space, and balcony."
+    },
+    "Mist Presidential Suite": {
+        "max_guests": 4,
+        "view": "Panoramic View",
+        "amenities": ["Most Luxurious", "Premium Service"],
+        "price_per_night": 20000,
+        "hut_numbers": ["PR01"],
+        "min_price_per_night": 20000 - MAX_DISCOUNT_PER_NIGHT,
+        "recommended_for": "Luxury travelers, Special occasions, Guests wanting the most premium accommodation",
+        "description": "The largest and most luxurious accommodation category available at the resort."
+    }
 }
 
 # Inventory size per category, derived from the physical hut numbers.
@@ -57,23 +74,24 @@ for _info in HUTS.values():
 # Valid amenity names - must match media_assets.related_item for asset_type='AMENITY'.
 AMENITIES = [
     "Swimming Pool",
-    "Play Area",
     "Restaurant",
-    "Camp Fire",
-    "Kids Zone",
+    "Nature Walks",
+    "Trekking Experiences",
+    "Family-Friendly Activities",
+    "Relaxation Amidst Nature"
 ]
 
 
 def normalize_hut(name):
     """
     Map a free-text hut name to its canonical catalog key, or None if unknown.
-    Accepts e.g. "economy", "Economy Hut", "luxury hut" -> "Economy"/"Luxury".
     """
     if not name:
         return None
-    cleaned = name.strip().lower().replace("hut", "").strip()
+    cleaned = name.strip().lower()
     for key in HUTS:
-        if key.lower() == cleaned:
+        # Flexible matching
+        if key.lower() in cleaned or cleaned in key.lower() or key.lower().replace("mist ", "") in cleaned:
             return key
     return None
 
