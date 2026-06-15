@@ -44,10 +44,17 @@ CREATE INDEX IF NOT EXISTS idx_bookings_overlap ON bookings (hut_category, hut_n
 -- ---------------------------------------------------------------------------
 INSERT INTO media_assets (asset_type, related_item, image_url, display_order) VALUES
     ('HUT', 'Mist Habitat', 'https://resort-table.s3.amazonaws.com/vythiri/mist-habitat.jpg', 1),
+    ('HUT', 'Mist Habitat', 'https://resort-table.s3.amazonaws.com/vythiri/g1.jpg', 2),
     ('HUT', 'Mist Premium Suite', 'https://resort-table.s3.amazonaws.com/vythiri/premium-suite.jpg', 1),
+    ('HUT', 'Mist Premium Suite', 'https://resort-table.s3.amazonaws.com/vythiri/g3.jpg', 2),
     ('HUT', 'Mist Haven Cottage', 'https://resort-table.s3.amazonaws.com/vythiri/mist-haven.jpg', 1),
+    ('HUT', 'Mist Haven Cottage', 'https://resort-table.s3.amazonaws.com/vythiri/g4.jpg', 2),
     ('HUT', 'Mist Villa', 'https://resort-table.s3.amazonaws.com/vythiri/mist-villa.jpg', 1),
-    ('HUT', 'Mist Presidential Suite', 'https://resort-table.s3.amazonaws.com/vythiri/presidential-suite.jpg', 1);
+    ('HUT', 'Mist Villa', 'https://resort-table.s3.amazonaws.com/vythiri/g5.jpg', 2),
+    ('HUT', 'Mist Villa', 'https://resort-table.s3.amazonaws.com/vythiri/g6.jpg', 3),
+    ('HUT', 'Mist Presidential Suite', 'https://resort-table.s3.amazonaws.com/vythiri/presidential-suite.jpg', 1),
+    ('HUT', 'Mist Presidential Suite', 'https://resort-table.s3.amazonaws.com/vythiri/g7.jpg', 2),
+    ('HUT', 'Mist Presidential Suite', 'https://resort-table.s3.amazonaws.com/vythiri/g8.jpg', 3);
 
 -- ---------------------------------------------------------------------------
 -- Seed: amenity images
