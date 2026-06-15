@@ -11,6 +11,12 @@ from .utils.whatsapp_utils import (
 
 webhook_blueprint = Blueprint("webhook", __name__)
 
+import threading
+
+def _process_in_background(app, body):
+    with app.app_context():
+        process_whatsapp_message(body)
+
 def handle_message():
     """
     Handle incoming webhook events from the WhatsApp API.
@@ -29,7 +35,9 @@ def handle_message():
 
     try:
         if is_valid_whatsapp_message(body):
-            process_whatsapp_message(body)
+            # Run processing in a background thread to prevent WhatsApp timeout and retries
+            app = current_app._get_current_object()
+            threading.Thread(target=_process_in_background, args=(app, body)).start()
             return jsonify({"status": "ok"}), 200
         else:
             return (
