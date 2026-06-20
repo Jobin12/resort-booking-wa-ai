@@ -495,7 +495,7 @@ def handle_resort_conversation(wa_id, name, user_message, send_message_callback)
     ]
 
     current_date_str = datetime.now().strftime("%Y-%m-%d %A")
-    dynamic_system_prompt = SYSTEM_INSTRUCTION + f"\n\n--- DYNAMIC CONTEXT ---\nToday's date is: {current_date_str}. Use this to automatically determine relative dates like 'tomorrow', 'next monday', etc. If the guest provides only a check-in day/date, gently ask for the check-out date or how many nights they need."
+    dynamic_system_prompt = SYSTEM_INSTRUCTION + f"\n\n--- DYNAMIC CONTEXT ---\nToday's date is: {current_date_str}. \nCRITICAL: You MUST internally calculate and convert relative dates (like 'next Tuesday') and duration ('for 2 nights') into exact `YYYY-MM-DD` strings BEFORE calling any tools. \nFor example, if today is Saturday and they want 'next Tuesday for 2 nights', you must mathematically calculate the exact YYYY-MM-DD for Tuesday, and add 2 days to get the YYYY-MM-DD for Thursday. \nNEVER pass relative words into the tools. If the guest provides only a check-in day/date, gently ask for the check-out date or how many nights they need."
 
     graph = create_agent(
         model=llm,
