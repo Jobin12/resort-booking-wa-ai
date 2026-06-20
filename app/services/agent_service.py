@@ -1,6 +1,7 @@
 import logging
 import json
 import time
+from datetime import datetime
 from flask import current_app
 from langchain_core.tools import StructuredTool
 from langchain.agents import create_agent
@@ -125,11 +126,12 @@ Do NOT overwhelm the user by asking for multiple details at once. Keep messages 
 4. **Show Images & Confirm Intent:** If they say yes, use the `get_hut_images` tool to show photos. After sending the photos, ask: *"How do you like them? Would you like to check availability and book?"*
 5. **Collect Details Step-by-Step:** Only after they confirm they want to book, start collecting details **ONE BY ONE**. Never ask for more than one piece of information in a single message.
    - Step A: Ask for their Check-in and Check-out dates (format YYYY-MM-DD for tools).
-   - Step B: Check availability using `check_availability`. If available, tell them the price and ask for their Full Name.
+   - Step B: Check availability using `check_availability`. If available, tell them the price and provide a warm handover message similar to: *"Sure, our front-office staff Cristiano Ronaldo will help you to book the room. Number: 484648930. You will receive a call back now."* Then, ask for their Full Name to tentatively hold the room.
    - Step C: Ask to confirm their Phone Number.
 
 Validate as you go. Compute and show the total (price per night x nights), then CONFIRM all details with the guest.
 Only after explicit confirmation, call `create_booking`. Never fabricate a booking or its ID.
+After creating the booking, call the `escalate_to_human` tool to alert Cristiano Ronaldo to call them.
 
 ---
 
@@ -492,10 +494,13 @@ def handle_resort_conversation(wa_id, name, user_message, send_message_callback)
             description="Notify the resort operator that a human needs to take over."),
     ]
 
+    current_date_str = datetime.now().strftime("%Y-%m-%d %A")
+    dynamic_system_prompt = SYSTEM_INSTRUCTION + f"\n\n--- DYNAMIC CONTEXT ---\nToday's date is: {current_date_str}. Use this to automatically determine relative dates like 'tomorrow', 'next monday', etc. If the guest provides only a check-in day/date, gently ask for the check-out date or how many nights they need."
+
     graph = create_agent(
         model=llm,
         tools=tools,
-        system_prompt=SYSTEM_INSTRUCTION,
+        system_prompt=dynamic_system_prompt,
         checkpointer=memory,
     )
 
