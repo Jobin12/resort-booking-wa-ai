@@ -2,6 +2,7 @@ import logging
 import json
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from flask import current_app
 from langchain_core.tools import StructuredTool
 from langchain.agents import create_agent
@@ -433,6 +434,24 @@ def handle_resort_conversation(wa_id, name, user_message, send_message_callback)
             return json.dumps({"status": "booking_not_found"})
         return json.dumps({"status": "cancelled", "booking": row})
 
+    # --- Date/time ---------------------------------------------------------
+
+    def _get_current_datetime() -> str:
+        """
+        Return the current date, time, and day-of-week in Indian Standard Time (IST, UTC+5:30).
+        Call this whenever you need to resolve relative expressions like 'today', 'tomorrow',
+        'next Saturday', 'this weekend', or 'in 3 days' into exact YYYY-MM-DD dates.
+        """
+        ist = ZoneInfo("Asia/Kolkata")
+        now = datetime.now(ist)
+        return json.dumps({
+            "datetime_ist": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "date": now.strftime("%Y-%m-%d"),
+            "day_of_week": now.strftime("%A"),
+            "time": now.strftime("%H:%M:%S"),
+            "timezone": "Asia/Kolkata (IST, UTC+5:30)",
+        })
+
     # --- Human escalation --------------------------------------------------
 
     def _escalate_to_human(
@@ -476,6 +495,8 @@ def handle_resort_conversation(wa_id, name, user_message, send_message_callback)
     # --- Register tools ----------------------------------------------------
 
     tools = [
+        StructuredTool.from_function(func=_get_current_datetime, name="get_current_datetime",
+            description="Get the current date, time, and day-of-week in Indian Standard Time (IST). Call this to resolve relative date expressions like 'today', 'tomorrow', 'next Saturday', 'this weekend', or 'in 3 days' before calling any booking tools."),
         StructuredTool.from_function(func=_get_hut_images, name="get_hut_images",
             description="Send photos of a hut category (Economy, Deluxe, Luxury) to the guest."),
         StructuredTool.from_function(func=_get_amenity_images, name="get_amenity_images",
@@ -494,8 +515,22 @@ def handle_resort_conversation(wa_id, name, user_message, send_message_callback)
             description="Notify the resort operator that a human needs to take over."),
     ]
 
-    current_date_str = datetime.now().strftime("%Y-%m-%d %A")
-    dynamic_system_prompt = SYSTEM_INSTRUCTION + f"\n\n--- DYNAMIC CONTEXT ---\nToday's date is: {current_date_str}. \nCRITICAL: You MUST internally calculate and convert relative dates (like 'next Tuesday') and duration ('for 2 nights') into exact `YYYY-MM-DD` strings BEFORE calling any tools. \nFor example, if today is Saturday and they want 'next Tuesday for 2 nights', you must mathematically calculate the exact YYYY-MM-DD for Tuesday, and add 2 days to get the YYYY-MM-DD for Thursday. \nNEVER pass relative words into the tools. If the guest provides only a check-in day/date, gently ask for the check-out date or how many nights they need."
+    ist = ZoneInfo("Asia/Kolkata")
+    current_date_str = datetime.now(ist).strftime("%Y-%m-%d %A")
+    dynamic_system_prompt = SYSTEM_INSTRUCTION + f"""
+
+--- DYNAMIC CONTEXT ---
+Current date/time (Indian Standard Time, IST): {current_date_str}.
+
+DATE RESOLUTION RULES (CRITICAL — follow in order):
+1. If the guest uses ANY relative date expression ("today", "tomorrow", "next Saturday", "this weekend", "in 3 days", "next week", etc.), you MUST call `get_current_datetime` FIRST to get the exact IST date before computing anything.
+2. After getting the current date, mathematically calculate the exact YYYY-MM-DD for the check-in and check-out dates.
+   - "next Saturday" means the upcoming Saturday on the calendar (if today IS Saturday, it means 7 days later).
+   - "for 2 days" / "for 2 nights" means check-out = check-in + 2 days.
+   - "this weekend" = next Saturday check-in, Sunday + 1 check-out (unless already weekend).
+3. NEVER pass relative words (like "next Saturday", "tomorrow") into any tool parameter. Always pass exact YYYY-MM-DD strings.
+4. If you are unsure about either the check-in OR check-out date, ask the guest to clarify BEFORE calling any availability/booking tool.
+5. After computing dates, tell the guest the exact dates you are checking ("Let me check availability for 21 Jun – 23 Jun") so they can correct you if wrong."""
 
     graph = create_agent(
         model=llm,
